@@ -8,7 +8,7 @@
           "name": "Python",
           "type": "python",
           "request": "launch",
-          "program": "${workspaceFolder}/finder.py",
+          "program": "${workspaceFolder}/Recursion/fibonnaci.py",
           "args": []
       }
   ]
