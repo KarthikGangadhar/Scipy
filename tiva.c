@@ -25,7 +25,7 @@
 // UART Interface:
 //   U0TX (PA1) and U0RX (PA0) are connected to the 2nd controller
 //   The USB on the 2nd controller enumerates to an ICDI interface and a virtual COM port
-//   Configured to 115,200 baud, 8N1
+//   Configured to 115,20    0 baud, 8N1
 
 //-----------------------------------------------------------------------------
 // Device includes, defines, and assembler directives
@@ -169,11 +169,6 @@ void startTimer(){
     WTIMER5_CTL_R |= TIMER_CTL_TAEN;  // turn-on Timer
 }
 
-void stopTimer(){
-    NVIC_EN3_R |= 1 << (INT_WTIMER5A-16-96);  // turn-on interrupt 120 (WTIMER5A)
-    WideTimer5Isr();
-}
-
 // Blocking function that writes a serial character when the UART buffer is not full
 void putcUart0(char c)
 {
@@ -229,7 +224,12 @@ void WideTimer5Isr()
     WTIMER5_ICR_R = TIMER_ICR_CAECINT;           // clear interrupt flag
 }
 
-void AnalogComparator05Isr(){
+void stopTimer(){
+    NVIC_EN3_R |= 1 << (INT_WTIMER5A-16-96);  // turn-on interrupt 120 (WTIMER5A)
+    WideTimer5Isr();
+}
+
+void analogComparator05Isr(){
 
     //  resistor time constant
     resistor_time_value = WTIMER5_TAV_R;
@@ -245,8 +245,8 @@ void getCommand()
         char c = getcUart0();
         if(c == 0x08){ // if character is BACK_SPACE
             if(count > 0){
-                GREEN_LED = 0;
-                RED_LED ^= 1;
+//                GREEN_LED = 0;
+//                RED_LED ^= 1;
                 count = count - 1;
             }
         }else if(c == 0x0D){ //CARRIAGE_RETURN
@@ -254,8 +254,8 @@ void getCommand()
             break;
         }else if( c >= 0x20 ){ // character value greater than SPACE.
             strp[count++] = tolower(c);
-            GREEN_LED ^= 1;
-            RED_LED = 0;
+//            GREEN_LED ^= 1;
+//            RED_LED = 0;
         }
     }
 }
@@ -319,9 +319,9 @@ bool isNumber(char * value){
 bool isCommand(uint8_t argCount){
     uint8_t i = 0;
     char * outputs[5] = { "meas_lr","meas_c","highside_r","lowside_r","integrate"};
-    char * commands[9] = { "set","reset","voltage","resistor","capacitance","inductance","esr","auto", "timer" };
+    char * commands[13] = { "i","v","c","r","set","reset","voltage","resistor","capacitance","inductance","esr","auto", "timer" };
 
-    for(i=0; i < 9; i++ ){
+    for(i=0; i < 13; i++ ){
 
         if(!(strcmp(commandArgs[0],commands[i]))){
 
@@ -345,20 +345,38 @@ bool isCommand(uint8_t argCount){
                 }
             }
             //2. Check for voltage command
-            else if(!(strcmp(commandArgs[0],"voltage"))){
+            else if(!(strcmp(commandArgs[0],"voltage")) || !(strcmp(commandArgs[0],"v"))){
                 if(argCount == 1){
                     return true;
                 }
             }
             //3. Check for resistor command
-            else if(!(strcmp(commandArgs[0],"resistor"))){
+            else if(!(strcmp(commandArgs[0],"resistor")) || !(strcmp(commandArgs[0],"r"))){
                 if(argCount == 1){
                     return true;
                 }
             }
-            //4. Check for timer command
+            //4. Check for resistor command
+            else if(!(strcmp(commandArgs[0],"reset"))){
+                if(argCount == 1){
+                    return true;
+                }
+            }
+            //5. Check for timer command
             else if(!(strcmp(commandArgs[0],"timer"))){
                 if(argCount == 2){
+                    return true;
+                }
+            }
+            //6. Check for timer command
+            else if(!(strcmp(commandArgs[0],"capacitance")) || !(strcmp(commandArgs[0],"c"))){
+                if(argCount == 1){
+                    return true;
+                }
+            }
+            //6. Check for timer command
+            else if(!(strcmp(commandArgs[0],"inductance")) || !(strcmp(commandArgs[0],"i"))){
+                if(argCount == 1){
                     return true;
                 }
             }
@@ -392,11 +410,12 @@ void ledCheck(void)
 {
     initSerialHw();
     // Toggle red LED every 500m second
-    while(1)
-    {
-      RED_LED ^= 1;
+//    while(1)
+//    {
+      GREEN_LED ^= 1;
       waitMicrosecond(500000);
-    }
+      GREEN_LED ^= 1;
+//    }
 }
 
 void measureVoltage()
@@ -454,10 +473,16 @@ void resetOutputTerminals(){
 void measureResistance(){
 
         // Reset timer Count
-//        WTIMER5_TAV_R = 0;
+        WTIMER5_TAV_R = 0;
+
+        char resistor_time_count[20];  // character to store time value
+        char resistor_characters[20];
+        float time_value = 0.0;
+        float constant = 1.5308702267422474;
+        float resistance;
 
         // Reset output terminals to 0v
-        resetOutputTerminals()
+        resetOutputTerminals();
 
         // wait for sometime
         waitMicrosecond(60000);
@@ -468,7 +493,7 @@ void measureResistance(){
         GPIO_PORTE_DATA_R |= 0x02;   // INTEGRATE = 1;
 
         // wait for 2 sec
-        waitMicrosecond(2000000);
+        waitMicrosecond(400000);
 
         // charge capacitor
         GPIO_PORTE_DATA_R &= ~(0x20);   // LOWSIDE_R = 0;
@@ -479,10 +504,7 @@ void measureResistance(){
         NVIC_EN0_R |= (1 << (INT_COMP0-16)); // Set the comparator Interrupt
 
         waitMicrosecond(500000);         // wait for 2 sec
-        NVIC_EN0_R |= (1 << ~(INT_COMP0-16)); // Reset the Comparator Interrupt
-
-        char resistor_time_count[20];  // character to store time value
-        float time_value = 0.0;
+        NVIC_EN0_R |= ~(1 << (INT_COMP0-16)); // Reset the Comparator Interrupt
 
         // time in micro seconds
         time_value = (resistor_time_value / 40.0);
@@ -491,12 +513,146 @@ void measureResistance(){
         putsUart0(resistor_time_count);
         putsUart0("\r\n");
 
+        resistance = (time_value / (constant * 1000));
+
+        sprintf(resistor_characters, ": %f", resistance);
+        putsUart0("\r\n Resistance in (kilo-ohm) ");
+        putsUart0(resistor_characters);
+        putsUart0("\r\n");
+
 
         // resetting the counter to zero
         WTIMER5_TAV_R = 0;
 
         // reset the output terminal potentials
-        resetOutputTerminals()
+        resetOutputTerminals();
+}
+
+void displayOutputVoltage(){
+    // Blocking function that returns only when SW1 is pressed
+    while(GPIO_PORTF_DATA_R & 0x10){
+        measureVoltage();
+        waitMicrosecond(500000);
+    };
+}
+
+// Method to measure capacitance
+void measureCapacitance(){
+
+        // Reset timer Count
+        WTIMER5_TAV_R = 0;
+
+        char capacitor_time_count[20];  // character to store time value
+        char capacitor_characters[20];
+        float time_value = 0.0;
+        float constant = 60.0;
+        float capacitance;
+
+        // Reset output terminals to 0v
+        resetOutputTerminals();
+
+        // wait for sometime
+        waitMicrosecond(4000000);
+
+        // discharge capacitor
+        GPIO_PORTA_DATA_R |= 0x20;//  MEAS_C = 1;
+        GPIO_PORTE_DATA_R |= 0x20;   //  LOWSIDE_R = 1;
+
+        // wait for 2 sec
+        waitMicrosecond(4000000);
+//        measureVoltage();
+
+        // charge capacitor
+        GPIO_PORTE_DATA_R &= ~(0x20);   // LOWSIDE_R = 0;
+        GPIO_PORTD_DATA_R |= 0x04;      // HIGHSIDE_R = 1;
+
+        WTIMER5_TAV_R = 0; // reset the timer
+        WTIMER5_CTL_R |= TIMER_CTL_TAEN;  // turn-on Timer
+        NVIC_EN0_R |= (1 << (INT_COMP0-16)); // Set the comparator Interrupt
+
+        waitMicrosecond(4000000);         // wait for 2 sec
+        NVIC_EN0_R |= ~(1 << (INT_COMP0-16)); // Reset the Comparator Interrupt
+
+        // time in micro seconds
+        time_value = resistor_time_value;
+        sprintf(capacitor_time_count, ": %f", time_value);
+        putsUart0("\r\n Time in (us) ");
+        putsUart0(capacitor_time_count);
+        putsUart0("\r\n");
+
+        capacitance = (time_value / (constant * 100000.0));
+
+        sprintf(capacitor_characters, ": %f", capacitance);
+        putsUart0("\r\n Capacitance in (u-farad) ");
+        putsUart0(capacitor_characters);
+        putsUart0("\r\n");
+
+        // discharge capacitor
+        GPIO_PORTA_DATA_R |= 0x20;//  MEAS_C = 1;
+        GPIO_PORTE_DATA_R |= 0x20;   //  LOWSIDE_R = 1;
+//        measureVoltage();
+        waitMicrosecond(4000000);
+        measureVoltage();
+        // resetting the counter to zero
+        WTIMER5_TAV_R = 0;
+
+        // reset the output terminal potentials
+        resetOutputTerminals();
+//        displayOutputVoltage();
+}
+
+
+// Method to measure inductance
+void measureInductance(){
+
+        // Reset timer Count
+        WTIMER5_TAV_R = 0;
+
+        char inductance_time_count[20];  // character to store time value
+        char inductance_characters[20];
+        float time_value = 0.0;
+        float constant = 1.0;
+        float inductance;
+
+        // Reset output terminals to 0v
+        resetOutputTerminals();
+
+        // wait for sometime
+        waitMicrosecond(4000000);
+
+        // discharge capacitor
+        GPIO_PORTE_DATA_R |= 0x10;//  MEAS_LR = 1;
+        GPIO_PORTE_DATA_R |= 0x20;   //  LOWSIDE_R = 1;
+
+        // wait for 2 sec
+///        waitMicrosecond(4000000);
+
+        WTIMER5_TAV_R = 0; // reset the timer
+        WTIMER5_CTL_R |= TIMER_CTL_TAEN;  // turn-on Timer
+        NVIC_EN0_R |= (1 << (INT_COMP0-16)); // Set the comparator Interrupt
+
+        waitMicrosecond(2000000);         // wait for 2 sec
+        NVIC_EN0_R |= ~(1 << (INT_COMP0-16)); // Reset the Comparator Interrupt
+
+        // time in micro seconds
+        time_value = resistor_time_value;
+        sprintf(inductance_time_count, ": %f", time_value);
+        putsUart0("\r\n Time in (us) ");
+        putsUart0(inductance_time_count);
+        putsUart0("\r\n");
+
+        inductance = ((time_value * 33) / (constant));
+
+        sprintf(inductance_characters, ": %f", inductance);
+        putsUart0("\r\n Inductance in (u-henry) ");
+        putsUart0(inductance_characters);
+        putsUart0("\r\n");
+
+        // resetting the counter to zero
+        WTIMER5_TAV_R = 0;
+
+        // reset the output terminal potentials
+        resetOutputTerminals();
 }
 
 bool ExecuteCommand(){
@@ -536,7 +692,7 @@ bool ExecuteCommand(){
                      }
                 }
          }
-    else if(!(strcmp(commandArgs[0],"voltage")) && argc == 1){
+    else if((!(strcmp(commandArgs[0],"voltage")) || !(strcmp(commandArgs[0],"v"))) && argc == 1){
         measureVoltage();
         return true;
     }
@@ -544,8 +700,16 @@ bool ExecuteCommand(){
         resetLcrMeter();
         return true;
     }
-    else if(!(strcmp(commandArgs[0],"resistor")) && argc == 1){
+    else if((!(strcmp(commandArgs[0],"resistor")) || !(strcmp(commandArgs[0],"r"))) && argc == 1){
         measureResistance();
+        return true;
+    }
+    else if((!(strcmp(commandArgs[0],"capacitance")) || !(strcmp(commandArgs[0],"c"))) && argc == 1){
+        measureCapacitance();
+        return true;
+    }
+    else if((!(strcmp(commandArgs[0],"inductance")) || !(strcmp(commandArgs[0],"i"))) && argc == 1){
+        measureInductance();
         return true;
     }
     else if(!(strcmp(commandArgs[0],"timer")) && argc == 2 && !(strcmp(commandArgs[1],"start"))){
@@ -606,7 +770,7 @@ void serialCheck(void)
 int main(void)
 {
 //    code to blink red led for 500ms
-//    ledCheck();
+    ledCheck();
 //    code to receive commands
     serialCheck();
 }
